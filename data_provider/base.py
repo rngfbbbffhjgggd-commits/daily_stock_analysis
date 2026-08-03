@@ -627,6 +627,7 @@ class DataFetcherManager:
         "LongbridgeFetcher": {"hk", "us"},
         "FinnhubFetcher": {"us"},
         "AlphaVantageFetcher": {"us"},
+        "IFindFetcher": {"cn"},
     }
     _daily_source_health = CircuitBreaker(failure_threshold=3, cooldown_seconds=300.0)
     _CONCEPT_RANKINGS_CACHE_TTL_SECONDS = 300.0
@@ -1213,6 +1214,13 @@ class DataFetcherManager:
             optional_fetchers.append(AlphaVantageFetcher())
         else:
             logger.debug("[数据源初始化] 跳过未配置的 AlphaVantageFetcher")
+
+        ifind_token = (getattr(config, "ifind_auth_token", None) or "").strip()
+        if ifind_token:
+            from .ifind_fetcher import IFindFetcher
+            optional_fetchers.append(IFindFetcher(auth_token=ifind_token))
+        else:
+            logger.debug("[数据源初始化] 跳过未配置的 IFindFetcher")
 
         # 初始化数据源列表
         self._ensure_concurrency_guards()
@@ -1862,6 +1870,16 @@ class DataFetcherManager:
                             operation="get_realtime_quote",
                         )
                         quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', stock_code, source="em")
+
+                elif source == "ifind":
+                    fetcher = self._get_fetcher_by_name("IFindFetcher", capability="realtime_quote")
+                    if fetcher is not None and hasattr(fetcher, 'get_realtime_quote'):
+                        record_provider_run_started(
+                            data_type="realtime_quote",
+                            provider=fetcher.name,
+                            operation="get_realtime_quote",
+                        )
+                        quote = self._call_fetcher_method(fetcher, 'get_realtime_quote', raw_stock_code or stock_code)
                 
                 elif source == "akshare_sina":
                     fetcher = self._get_fetcher_by_name("AkshareFetcher", capability="realtime_quote")

@@ -716,6 +716,7 @@ class Config:
 
     # === 数据源 API Token ===
     tushare_token: Optional[str] = None
+    ifind_auth_token: Optional[str] = None
     tickflow_api_key: Optional[str] = None
     tickflow_kline_adjust: str = "none"
     tickflow_priority: int = 2
@@ -1623,6 +1624,7 @@ class Config:
             feishu_app_secret=os.getenv('FEISHU_APP_SECRET'),
             feishu_folder_token=os.getenv('FEISHU_FOLDER_TOKEN'),
             tushare_token=os.getenv('TUSHARE_TOKEN'),
+            ifind_auth_token=os.getenv('IFIND_AUTH_TOKEN') or None,
             tickflow_api_key=os.getenv('TICKFLOW_API_KEY'),
             tickflow_kline_adjust=normalize_tickflow_kline_adjust(os.getenv('TICKFLOW_KLINE_ADJUST')),
             tickflow_priority=parse_env_int(os.getenv('TICKFLOW_PRIORITY'), 2, field_name='TICKFLOW_PRIORITY', minimum=0),
@@ -2651,6 +2653,18 @@ class Config:
         if explicit:
             # User explicitly set priority, respect it
             return explicit
+
+        # 配了 iFind token 时，把 iFind 注入到实时行情优先级最前，
+        # 因为 iFind 走专用通道，从海外访问比东财/新浪稳定。
+        ifind_token = os.getenv('IFIND_AUTH_TOKEN', '').strip()
+        if ifind_token:
+            import logging
+            logger = logging.getLogger(__name__)
+            resolved = f'ifind,{default_priority}'
+            logger.info(
+                f"IFIND_AUTH_TOKEN detected, auto-injecting ifind into realtime priority: {resolved}"
+            )
+            return resolved
 
         tushare_token = os.getenv('TUSHARE_TOKEN', '').strip()
         if tushare_token:
