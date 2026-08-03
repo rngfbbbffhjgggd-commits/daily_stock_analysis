@@ -2068,23 +2068,18 @@ class AkshareFetcher(BaseFetcher):
             return None
 
     def get_concept_rankings(self, n: int = 5) -> Optional[Tuple[List[Dict], List[Dict]]]:
-        """获取概念/题材涨跌榜。"""
-        import akshare as ak
+        """获取概念/题材涨跌榜。
 
-        try:
-            self._set_random_user_agent()
-            self._enforce_rate_limit()
+        优先东财接口 (ak.stock_board_concept_name_em)；
+        东财失败时尝试新浪接口 (ak.stock_sector_spot indicator='概念')，
+        与行业板块的降级策略保持一致。
+        """
 
-            logger.info("[API调用] ak.stock_board_concept_name_em() 获取概念排行...")
-            df = ak.stock_board_concept_name_em()
+        def _get_rank_top_n(df: pd.DataFrame, change_col: str, name_col: str, n: int) -> Optional[Tuple[List[Dict], List[Dict]]]:
             if df is None or df.empty:
                 return None
-
-            change_col = '涨跌幅'
-            name_col = '板块名称'
             if change_col not in df.columns or name_col not in df.columns:
                 return None
-
             df = df.copy()
             df[change_col] = pd.to_numeric(df[change_col], errors='coerce')
             df = df.dropna(subset=[change_col])
@@ -2100,9 +2095,36 @@ class AkshareFetcher(BaseFetcher):
                     for _, row in bottom.iterrows()
                 ],
             )
+
+        import akshare as ak
+
+        # 优先东财接口
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            logger.info("[API调用] ak.stock_board_concept_name_em() 获取概念排行...")
+            df = ak.stock_board_concept_name_em()
+            result = _get_rank_top_n(df, '涨跌幅', '板块名称', n)
+            if result is not None:
+                return result
         except Exception as e:
-            logger.warning(f"[Akshare] 获取概念排行失败: {e}")
-            return None
+            logger.warning(f"[Akshare] 东财接口获取概念排行失败: {e}，尝试新浪接口")
+
+        # 东财失败后，尝试新浪接口
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            logger.info("[API调用] ak.stock_sector_spot(indicator='概念') 获取概念排行(新浪)...")
+            df = ak.stock_sector_spot(indicator='概念')
+            result = _get_rank_top_n(df, '涨跌幅', '板块', n)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"[Akshare] 新浪接口获取概念排行失败: {e}")
+
+        return None
 
     def get_hot_stocks(self, n: int = 10) -> Optional[List[Dict[str, Any]]]:
         """获取人气股榜，按免配置热榜数据源降级。"""
