@@ -61,7 +61,31 @@ jobs:
       - name: 创建必要目录
         run: |
           mkdir -p data logs reports
-      
+
+      - name: 设置复盘市场区域
+        id: set-region
+        env:
+          SCHEDULE_CRON: ${{ github.event.schedule }}
+          CONFIG_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
+        run: |
+          # 按触发时段决定大盘复盘的市场范围：
+          # - 早盘 8:30（美股已收盘、日韩已开盘）→ us,jp,kr 判断 A股开盘形势
+          # - 盘后 16:00（日韩与 A股均已收盘）→ jp,kr,cn 做当日总结
+          # - 手动触发（无 schedule）→ 用显式配置，默认 cn
+          case "${SCHEDULE_CRON}" in
+            "30 0 * * 1-5")
+              REGION="us,jp,kr"
+              ;;
+            "0 8 * * 1-5")
+              REGION="jp,kr,cn"
+              ;;
+            *)
+              REGION="${CONFIG_REGION}"
+              ;;
+          esac
+          echo "MARKET_REVIEW_REGION=${REGION}" >> "$GITHUB_ENV"
+          echo "ℹ️ 本次大盘复盘市场: ${REGION} (schedule=${SCHEDULE_CRON:-manual})"
+
       - name: 执行股票分析
         env:
           # ==========================================
@@ -387,7 +411,8 @@ jobs:
           # ==========================================
           # 避免直接写入 STOCK_LIST，保留同名 Environment variables 的 runner 环境值。
           STOCK_LIST_CONFIG: ${{ vars.STOCK_LIST || secrets.STOCK_LIST }}
-          MARKET_REVIEW_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
+          # 大盘复盘市场区域由下方"设置复盘市场区域"步骤按时段计算并导出
+          MARKET_REVIEW_REGION: ${{ env.MARKET_REVIEW_REGION }}
           MARKET_REVIEW_COLOR_SCHEME: ${{ vars.MARKET_REVIEW_COLOR_SCHEME || secrets.MARKET_REVIEW_COLOR_SCHEME || 'green_up' }}
           
           # ==========================================
