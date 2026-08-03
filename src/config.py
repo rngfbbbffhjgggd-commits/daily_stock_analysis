@@ -2646,25 +2646,30 @@ class Config:
         When TUSHARE_TOKEN is configured but REALTIME_SOURCE_PRIORITY is not
         explicitly set, automatically prepend 'tushare' to the default priority
         so that the paid data source is utilized for realtime quotes as well.
+
+        When IFIND_AUTH_TOKEN is configured, iFind is always prepended
+        (even over an explicit REALTIME_SOURCE_PRIORITY), because iFind runs
+        on a dedicated channel that is far more stable than Eastmoney/Sina
+        when accessed from overseas (GitHub Actions).
         """
         explicit = os.getenv('REALTIME_SOURCE_PRIORITY')
         default_priority = 'tencent,akshare_sina,efinance,akshare_em'
 
-        if explicit:
-            # User explicitly set priority, respect it
-            return explicit
+        base_priority = explicit if explicit else default_priority
 
         # 配了 iFind token 时，把 iFind 注入到实时行情优先级最前，
         # 因为 iFind 走专用通道，从海外访问比东财/新浪稳定。
         ifind_token = os.getenv('IFIND_AUTH_TOKEN', '').strip()
         if ifind_token:
-            import logging
-            logger = logging.getLogger(__name__)
-            resolved = f'ifind,{default_priority}'
-            logger.info(
-                f"IFIND_AUTH_TOKEN detected, auto-injecting ifind into realtime priority: {resolved}"
-            )
-            return resolved
+            if not base_priority.startswith('ifind'):
+                import logging
+                logger = logging.getLogger(__name__)
+                resolved = f'ifind,{base_priority}'
+                logger.info(
+                    f"IFIND_AUTH_TOKEN detected, auto-injecting ifind into realtime priority: {resolved}"
+                )
+                return resolved
+            return base_priority
 
         tushare_token = os.getenv('TUSHARE_TOKEN', '').strip()
         if tushare_token:
@@ -2672,13 +2677,13 @@ class Config:
             # Prepend tushare so the paid source is tried first
             import logging
             logger = logging.getLogger(__name__)
-            resolved = f'tushare,{default_priority}'
+            resolved = f'tushare,{base_priority}'
             logger.info(
                 f"TUSHARE_TOKEN detected, auto-injecting tushare into realtime priority: {resolved}"
             )
             return resolved
 
-        return default_priority
+        return base_priority
 
     @classmethod
     def reset_instance(cls) -> None:
