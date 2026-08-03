@@ -102,6 +102,16 @@ _OPT_IN_THINKING_MODELS: Dict[str, dict] = {
     "deepseek-chat": {"thinking": {"type": "enabled"}},
 }
 
+# Models where thinking mode must be explicitly DISABLED. DeepSeek v4 系列默认
+# 启用 thinking（effort=high）：会先输出大段 reasoning_content 抢占输出预算，
+# 导致最终结构化 JSON 在长输出场景被截断（如 battle_plan 写一半就停），且
+# thinking 模式下 temperature 等参数不生效。这里显式关闭 thinking，
+# 让模型直接输出最终答案，保证长 JSON 完整。
+_THINKING_DISABLED_MODELS: Dict[str, dict] = {
+    "deepseek-v4-flash": {"thinking": {"type": "disabled"}},
+    "deepseek-v4-pro": {"thinking": {"type": "disabled"}},
+}
+
 # Custom model pricing for models not in LiteLLM's built-in price list.
 # Official MiniMax pricing: https://platform.minimax.io/docs/guides/pricing-paygo
 # - MiniMax-M3: $0.6/M input tokens, $2.4/M output tokens for prompts <=512K input
@@ -289,10 +299,16 @@ def get_thinking_extra_body(model: str) -> Optional[dict]:
       Return None to avoid duplicate activation.
     - Opt-in models (_OPT_IN_THINKING_MODELS: deepseek-chat): Return the activation
       payload to explicitly enable thinking mode.
+    - Thinking-disabled models (_THINKING_DISABLED_MODELS: deepseek-v4-flash/pro):
+      Return the disable payload so the model outputs the final answer directly,
+      keeping long structured JSON responses complete and honoring temperature.
     - All other models: Return None (no thinking mode).
     """
     if _model_matches(model, _AUTO_THINKING_MODELS):
         return None
+    disable_payload = _get_opt_in_payload(model, _THINKING_DISABLED_MODELS)
+    if disable_payload is not None:
+        return disable_payload
     return _get_opt_in_payload(model, _OPT_IN_THINKING_MODELS)
 
 
