@@ -325,12 +325,40 @@ class YfinanceFetcher(BaseFetcher):
             return None
         today_row = hist.iloc[-1]
         prev_row = hist.iloc[-2] if len(hist) > 1 else today_row
-        price = float(today_row['Close'])
-        prev_close = float(prev_row['Close'])
+
+        def _is_na(value: Any) -> bool:
+            try:
+                return bool(pd.isna(value))
+            except (TypeError, ValueError):
+                return True
+
+        # Yahoo 对部分海外指数（如日韩）当天日K的 Close 可能返回空值，
+        # 此时退而使用 fast_info 的实时价/昨收兜底，避免产出 nan。
+        price = float(today_row['Close']) if not _is_na(today_row['Close']) else None
+        if price is None:
+            try:
+                price = float(ticker.fast_info['last_price'])
+            except Exception:
+                price = None
+        if price is None:
+            logger.warning("[Yfinance] %s 实时价获取失败，跳过", yf_code)
+            return None
+
+        prev_close = float(prev_row['Close']) if not _is_na(prev_row['Close']) else None
+        if prev_close is None:
+            try:
+                prev_close = float(ticker.fast_info['previous_close'])
+            except Exception:
+                prev_close = None
+        if prev_close is None or prev_close <= 0:
+            prev_close = price
+
         change = price - prev_close
         change_pct = (change / prev_close) * 100 if prev_close else 0
-        high = float(today_row['High'])
-        low = float(today_row['Low'])
+        high = float(today_row['High']) if not _is_na(today_row['High']) else price
+        low = float(today_row['Low']) if not _is_na(today_row['Low']) else price
+        open_price = float(today_row['Open']) if not _is_na(today_row['Open']) else price
+        volume = float(today_row['Volume']) if not _is_na(today_row['Volume']) else 0.0
         # 振幅 = (最高 - 最低) / 昨收 * 100
         amplitude = ((high - low) / prev_close * 100) if prev_close else 0
         return {
@@ -339,11 +367,11 @@ class YfinanceFetcher(BaseFetcher):
             'current': price,
             'change': change,
             'change_pct': change_pct,
-            'open': float(today_row['Open']),
+            'open': open_price,
             'high': high,
             'low': low,
             'prev_close': prev_close,
-            'volume': float(today_row['Volume']),
+            'volume': volume,
             'amount': 0.0,  # Yahoo Finance 不提供准确成交额
             'amplitude': amplitude,
         }

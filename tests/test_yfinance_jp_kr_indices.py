@@ -78,6 +78,38 @@ class TestJpKrIndexMappings(unittest.TestCase):
         self.assertIsNone(self.fetcher._get_jp_main_indices(mock_yf))
         self.assertIsNone(self.fetcher._get_kr_main_indices(mock_yf))
 
+    def test_kr_index_uses_fast_info_when_latest_close_is_null(self):
+        """KOSPI 当日 Close 为 null 时，应回退到 fast_info 实时价，避免 nan。"""
+        hist = pd.DataFrame(
+            {
+                'Close': [6595.45, float('nan')],
+                'Open': [5657.79, 6358.27],
+                'High': [6630.77, 6393.00],
+                'Low': [5629.76, 6223.29],
+                'Volume': [434400.0, 272959.0],
+            },
+            index=pd.DatetimeIndex(['2026-07-31', '2026-08-03']),
+        )
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = hist
+        mock_ticker.fast_info = {'last_price': 6257.45, 'previous_close': 5593.56}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+
+        result = self.fetcher._get_kr_main_indices(mock_yf)
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        kospi = next(item for item in result if item['code'] == 'KS11')
+        self.assertEqual(kospi['current'], 6257.45)
+        # 昨收应取 hist 前一交易日 6595.45（非空），而非 fast_info.previous_close
+        self.assertEqual(kospi['prev_close'], 6595.45)
+        # (6257.45 - 6595.45) / 6595.45 ≈ -5.12%
+        self.assertAlmostEqual(kospi['change_pct'], -5.124, places=2)
+        # 所有字段不得出现 nan
+        for value in kospi.values():
+            self.assertFalse(isinstance(value, float) and pd.isna(value))
+
 
 if __name__ == '__main__':
     unittest.main()
