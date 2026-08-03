@@ -107,6 +107,12 @@ from src.market_structure_prompt import format_market_structure_prompt_section
 logger = logging.getLogger(__name__)
 
 
+def _is_etf_like(code: Any) -> bool:
+    """保守判断 A 股场内基金/ETF 代码（沪市 5 开头、深市 1 开头）。"""
+    text = str(code or "").strip()
+    return text.isdigit() and len(text) == 6 and text.startswith(("5", "1"))
+
+
 def _localized_text(language: Any, *, en: str, zh: str, ko: str) -> str:
     """Pick a deterministic fallback string for the report language (zh/en/ko)."""
     normalized = normalize_report_language(language)
@@ -3728,7 +3734,7 @@ class GeminiAnalyzer:
         quote_rows.extend(
             [
                 f"| {pct_chg_label} | {today.get('pct_chg', 'N/A')}% |",
-                f"| {volume_label} | {self._format_volume(today.get('volume'))} |",
+                f"| {volume_label} | {self._format_volume(today.get('volume'), is_etf=_is_etf_like(code))} |",
                 f"| {amount_label} | {self._format_amount(today.get('amount'))} |",
             ]
         )
@@ -4181,10 +4187,23 @@ class GeminiAnalyzer:
         
         return prompt
     
-    def _format_volume(self, volume: Optional[float]) -> str:
-        """格式化成交量显示"""
+    def _format_volume(self, volume: Optional[float], is_etf: bool = False) -> str:
+        """格式化成交量显示。
+
+        ETF/基金成交量按 A 股规则以「手」展示（1 手 = 100 股）；
+        股票保持「股」口径。volume 参数统一为「股」。
+        """
         if volume is None:
             return 'N/A'
+        if is_etf:
+            # 股 -> 手 -> 万手
+            volume_hand = volume / 100.0
+            if volume_hand >= 1e8:
+                return f"{volume_hand / 1e8:.2f} 亿手"
+            elif volume_hand >= 1e4:
+                return f"{volume_hand / 1e4:.2f} 万手"
+            else:
+                return f"{volume_hand:.0f} 手"
         if volume >= 1e8:
             return f"{volume / 1e8:.2f} 亿股"
         elif volume >= 1e4:
@@ -4255,7 +4274,7 @@ class GeminiAnalyzer:
             "pct_chg": self._format_percent(today.get('pct_chg')),
             "change_amount": self._format_price(change_amount),
             "amplitude": self._format_percent(amplitude),
-            "volume": self._format_volume(today.get('volume')),
+            "volume": self._format_volume(today.get('volume'), is_etf=_is_etf_like(context.get('code', ''))),
             "amount": self._format_amount(today.get('amount')),
         }
 
