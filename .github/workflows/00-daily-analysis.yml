@@ -19,6 +19,17 @@ on:
           - full          # 完整分析（股票+大盘）
           - market-only   # 仅大盘复盘
           - stocks-only   # 仅股票分析
+      market_region:
+        description: '大盘复盘市场区域（手动触发时用）'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''            # 自动（跟随定时时段，手动时默认 cn）
+          - 'cn'          # 仅 A股
+          - 'us,jp,kr'    # 美股+日股+韩股（早盘视角）
+          - 'jp,kr,cn'    # 日股+韩股+A股（盘后视角）
+          - 'cn,us,jp,kr' # 全部
       force_run:
         description: '强制运行（跳过交易日检查）'
         required: false
@@ -67,22 +78,29 @@ jobs:
         env:
           SCHEDULE_CRON: ${{ github.event.schedule }}
           CONFIG_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
+          MANUAL_REGION: ${{ github.event.inputs.market_region }}
         run: |
           # 按触发时段决定大盘复盘的市场范围：
           # - 早盘 8:30（美股已收盘、日韩已开盘）→ us,jp,kr 判断 A股开盘形势
           # - 盘后 16:00（日韩与 A股均已收盘）→ jp,kr,cn 做当日总结
-          # - 手动触发（无 schedule）→ 用显式配置，默认 cn
-          case "${SCHEDULE_CRON}" in
-            "30 0 * * 1-5")
-              REGION="us,jp,kr"
-              ;;
-            "0 8 * * 1-5")
-              REGION="jp,kr,cn"
-              ;;
-            *)
-              REGION="${CONFIG_REGION}"
-              ;;
-          esac
+          # - 手动触发：优先用 market_region 输入，其次显式配置，默认 cn
+          if [ -n "${MANUAL_REGION}" ]; then
+            REGION="${MANUAL_REGION}"
+          elif [ -n "${SCHEDULE_CRON}" ]; then
+            case "${SCHEDULE_CRON}" in
+              "30 0 * * 1-5")
+                REGION="us,jp,kr"
+                ;;
+              "0 8 * * 1-5")
+                REGION="jp,kr,cn"
+                ;;
+              *)
+                REGION="${CONFIG_REGION}"
+                ;;
+            esac
+          else
+            REGION="${CONFIG_REGION}"
+          fi
           echo "MARKET_REVIEW_REGION=${REGION}" >> "$GITHUB_ENV"
           echo "ℹ️ 本次大盘复盘市场: ${REGION} (schedule=${SCHEDULE_CRON:-manual})"
 
