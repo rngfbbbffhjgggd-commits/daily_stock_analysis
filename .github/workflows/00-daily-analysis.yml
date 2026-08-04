@@ -1,12 +1,7 @@
 name: 每日股票分析
-# 定时任务激活标记 2026-08-04（修改本文件内容可触发 GitHub 重新注册 cron 调度）
+# 仅手动触发（GitHub Actions 定时触发不可靠，已关闭 schedule，改为手动触发）
 
 on:
-  # 定时触发 - 每天北京时间 08:30 和 16:00（周一到周五）
-  schedule:
-    - cron: '30 0 * * 1-5'     # 周一到周五，UTC 00:30 = 北京时间 08:30
-    - cron: '0 8 * * 1-5'     # 周一到周五，UTC 08:00 = 北京时间 16:00
-  
   # 手动触发
   workflow_dispatch:
     inputs:
@@ -76,33 +71,17 @@ jobs:
       - name: 设置复盘市场区域
         id: set-region
         env:
-          SCHEDULE_CRON: ${{ github.event.schedule }}
           CONFIG_REGION: ${{ vars.MARKET_REVIEW_REGION || secrets.MARKET_REVIEW_REGION || 'cn' }}
           MANUAL_REGION: ${{ github.event.inputs.market_region }}
         run: |
-          # 按触发时段决定大盘复盘的市场范围：
-          # - 早盘 8:30（美股已收盘、日韩已开盘）→ us,jp,kr 判断 A股开盘形势
-          # - 盘后 16:00（日韩与 A股均已收盘）→ jp,kr,cn 做当日总结
-          # - 手动触发：优先用 market_region 输入，其次显式配置，默认 cn
+          # 手动触发：优先用 market_region 输入，其次显式配置，默认 cn
           if [ -n "${MANUAL_REGION}" ]; then
             REGION="${MANUAL_REGION}"
-          elif [ -n "${SCHEDULE_CRON}" ]; then
-            case "${SCHEDULE_CRON}" in
-              "30 0 * * 1-5")
-                REGION="us,jp,kr"
-                ;;
-              "0 8 * * 1-5")
-                REGION="jp,kr,cn"
-                ;;
-              *)
-                REGION="${CONFIG_REGION}"
-                ;;
-            esac
           else
             REGION="${CONFIG_REGION}"
           fi
           echo "MARKET_REVIEW_REGION=${REGION}" >> "$GITHUB_ENV"
-          echo "ℹ️ 本次大盘复盘市场: ${REGION} (schedule=${SCHEDULE_CRON:-manual})"
+          echo "ℹ️ 本次大盘复盘市场: ${REGION}"
 
       - name: 执行股票分析
         env:
