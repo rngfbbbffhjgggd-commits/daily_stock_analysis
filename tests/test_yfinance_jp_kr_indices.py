@@ -110,6 +110,34 @@ class TestJpKrIndexMappings(unittest.TestCase):
         for value in kospi.values():
             self.assertFalse(isinstance(value, float) and pd.isna(value))
 
+    def test_kr_index_uses_previous_close_when_hist_has_single_row(self):
+        """日韩指数 period=2d 只返回单日时，昨收应用 fast_info.previous_close，避免涨跌幅恒 0.00%。"""
+        hist = pd.DataFrame(
+            {
+                'Close': [63957.53],
+                'Open': [63995.28],
+                'High': [64240.50],
+                'Low': [62864.43],
+                'Volume': [272959.0],
+            },
+            index=pd.DatetimeIndex(['2026-08-04']),
+        )
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = hist
+        mock_ticker.fast_info = {'last_price': 63957.53, 'previous_close': 63754.9}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
+
+        result = self.fetcher._get_jp_main_indices(mock_yf)
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        n225 = next(item for item in result if item['code'] == 'N225')
+        self.assertEqual(n225['current'], 63957.53)
+        self.assertEqual(n225['prev_close'], 63754.9)
+        # (63957.53 - 63754.9) / 63754.9 ≈ +0.32%
+        self.assertAlmostEqual(n225['change_pct'], 0.318, places=2)
+
 
 if __name__ == '__main__':
     unittest.main()

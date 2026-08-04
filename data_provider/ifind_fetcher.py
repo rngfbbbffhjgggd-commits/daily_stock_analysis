@@ -206,7 +206,7 @@ class IFindFetcher(BaseFetcher):
         quote = UnifiedRealtimeQuote(
             code=code,
             name=name,
-            source=RealtimeSource.FALLBACK,
+            source=RealtimeSource.IFIND,
             price=price,
             change_pct=change_pct,
             change_amount=change_amount,

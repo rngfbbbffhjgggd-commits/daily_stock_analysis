@@ -333,7 +333,8 @@ class YfinanceFetcher(BaseFetcher):
                 return True
 
         # Yahoo 对部分海外指数（如日韩）当天日K的 Close 可能返回空值，
-        # 此时退而使用 fast_info 的实时价/昨收兜底，避免产出 nan。
+        # 或 period=2d 只返回单日数据。两种情况都需用 fast_info 实时价/昨收兜底，
+        # 否则会产出 nan，或把昨收误当成今日自身导致涨跌幅恒为 0.00%。
         price = float(today_row['Close']) if not _is_na(today_row['Close']) else None
         if price is None:
             try:
@@ -344,7 +345,9 @@ class YfinanceFetcher(BaseFetcher):
             logger.warning("[Yfinance] %s 实时价获取失败，跳过", yf_code)
             return None
 
-        prev_close = float(prev_row['Close']) if not _is_na(prev_row['Close']) else None
+        prev_close = None
+        if len(hist) > 1:
+            prev_close = float(prev_row['Close']) if not _is_na(prev_row['Close']) else None
         if prev_close is None:
             try:
                 prev_close = float(ticker.fast_info['previous_close'])

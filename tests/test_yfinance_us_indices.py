@@ -78,16 +78,21 @@ class TestFetchYfTickerData(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_single_row_history_uses_same_as_prev(self):
-        """仅一行数据时 prev_close 等于 current，change_pct 为 0"""
-        mock_hist = _make_mock_hist(close=5000.0, prev_close=5000.0)
+    def test_single_row_history_uses_fast_info_previous_close(self):
+        """仅一行数据时 prev_close 应用 fast_info.previous_close，避免涨跌幅恒 0.00%"""
+        mock_hist = _make_mock_hist(close=5100.0, prev_close=5000.0)
         mock_hist = mock_hist.iloc[[-1]]
-        mock_yf = _make_mock_yf(mock_hist)
+        mock_ticker = MagicMock()
+        mock_ticker.history.return_value = mock_hist
+        mock_ticker.fast_info = {"last_price": 5100.0, "previous_close": 5000.0}
+        mock_yf = MagicMock()
+        mock_yf.Ticker.return_value = mock_ticker
 
         result = self.fetcher._fetch_yf_ticker_data(mock_yf, '^GSPC', '标普500指数', 'SPX')
 
         self.assertIsNotNone(result)
-        self.assertEqual(result['change_pct'], 0.0)
+        self.assertEqual(result['prev_close'], 5000.0)
+        self.assertAlmostEqual(result['change_pct'], 2.0)
 
 
 class TestGetUsMainIndices(unittest.TestCase):
